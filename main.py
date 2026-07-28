@@ -1,11 +1,30 @@
 import numpy as np
 from scipy.optimize import curve_fit
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 import subprocess
 from src.curve import *
 from src.surface import *
+from src.graphing import *
 
-r_data = [ 
+
+# FIGURE OUT OFFSETS FOR DOBOT SURFACE...
+
+# fake data....
+y_data = [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0, 
+    0,
+    0,  
+    0,
+    0    
+]
+
+x_data = [ 
     151,
     175,
     200,
@@ -31,33 +50,110 @@ z_data = [
     2.2
 ]
 
+# ideally, you'd imagine doing the radial conversion, but all my fake points are ON the x axis (y=0), thus x=r
+r_data = x_data
+points = np.column_stack((r_data, z_data))
 
 
 
-
-params, _ = curve_fit(
-    radial_bowl,
-    r_data,
-    z_data,
-    p0=[10.0, 0.1]
-)
-
-self.a, self.b = params
+# Model the bowl...
+bowl = Bowl.make_from_measured_r_z_points(points)
+MatplotGraphing.plot_and_save("bowl_fit.png", bowl.fit_points, bowl.getZofR, 'measured', 'fit')
 
 
 
-depth = 12
-sharpness = 0.0009
-
-bowl = TiltedSaturatingBowl(a=depth,b=sharpness,tilt_x=0,tilt_y=0)
+# klunky, but this establishes an initial set of points...
 Xb, Yb, Zb = bowl.sample(size=400, resolution=100)
-Xb, Yb, Zb = bowl.translate(dz=-2)
+
+# Manual offsets to those points...
+Xb, Yb, Zb = bowl.translate(dz=-4.5)
 Xb, Yb, Zb = bowl.mask_out_inner_radius(radius=150)
 
 
 
-surface = SomeSurface()
-Xs, Ys, Zs = surface.sample(size=400, resolution=100)
+# fake measurements for figuring out tilted plane...
+measurements = [
+    [100, 0,  1.2],
+    [0, 100, 0.8],
+    [-100, 0, 0.7],
+    [0, -100, 1.1],
+]
+
+tilted_surface = FlatSurface.make_from_measured_points(measurements)
+Xts, Yts, Zts = tilted_surface.sample(size=400, resolution=100)
+
+MatplotGraphing.plot_and_save("tilt_fit_x.png", tilted_surface.fit_points[:,[0,2]], tilted_surface.getZofX, 'measuredx', 'fit')
+MatplotGraphing.plot_and_save("tilt_fit_y.png", tilted_surface.fit_points[:,[1,2]], tilted_surface.getZofY, 'measuredy', 'fit')
+
+
+# DATA VIEW SETUP....
+
+# This represents the expected mechanical surface.
+normal_surface = FlatSurface()
+Xns, Yns, Zns = normal_surface.sample(size=400, resolution=100)
+
+fig = go.Figure(
+    data=[
+        # Normal Flat Surface...
+        go.Surface(
+            x=Xns,
+            y=Yns,
+            z=Zns,
+            name="normal flat"
+        ),
+
+        # Tilted Flat Surface...
+        # go.Surface(
+        #     x=Xs,
+        #     y=Ys,
+        #     z=Zs,
+        #     name="tilted flat"
+        # ),
+
+        # Normal Bowl Surface...
+        # go.Surface(
+        #     x=Xb,
+        #     y=Yb,
+        #     z=Zb,
+        #     name="normal bowl"
+        # ),
+
+        # Tilted Bowl Surface...
+        go.Surface(
+            x=Xb,
+            y=Yb,
+            z=Zb + Zts,
+            name="tilted bowl"
+        ),
+    ]
+)
+
+# Layout setup
+fig.update_layout(
+    title="3D Parametric Curve",
+    scene=dict(
+        xaxis_title="X",
+        yaxis_title="Y",
+        zaxis_title="Z"
+    )
+)
+
+# save file
+filename = "output.html"
+fig.write_html(filename)
+
+# automatically open it in browser...
+subprocess.run(["explorer.exe", filename])
+
+
+
+
+
+
+
+
+
+# NOTES.....
 
 
 # used for plotting a curve...
@@ -72,35 +168,3 @@ Xs, Ys, Zs = surface.sample(size=400, resolution=100)
 #         )
 #     ]
 # )
-
-# used for plotting a surface...
-fig = go.Figure(
-    data=[
-        go.Surface(
-            x=Xb,
-            y=Yb,
-            z=Zb,
-            name="bowl"
-        ),
-        go.Surface(
-            x=Xs,
-            y=Ys,
-            z=Zs,
-            name="bowl"
-        )
-    ]
-)
-
-fig.update_layout(
-    title="3D Parametric Curve",
-    scene=dict(
-        xaxis_title="X",
-        yaxis_title="Y",
-        zaxis_title="Z"
-    )
-)
-
-# save file and run it
-filename = "output.html"
-fig.write_html(filename)
-subprocess.run(["explorer.exe", filename])
